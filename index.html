@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TCC Postura – Receptor BLE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --fundo: #E8EDEA;
+    --superficie: #F7F9F8;
+    --tinta: #1E2B2F;
+    --suave: #5C6B6E;
+    --conectado: #2E7D6B;
+    --alerta: #B5452E;
+    --linha: #CBD5D1;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fundo: #162024; --superficie: #1E2A2E; --tinta: #E4ECE9;
+      --suave: #9AABA8; --conectado: #5BBFA6; --alerta: #E07A62; --linha: #2F3D41;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fundo); color: var(--tinta);
+    font-family: "Atkinson Hyperlegible", -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+  }
+  main { max-width: 34rem; margin: 0 auto; padding: 1.5rem 1.25rem 2rem; }
+  h1 { font-size: 1.35rem; margin: 0 0 0.25rem; }
+  .sub { color: var(--suave); margin: 0 0 1.5rem; font-size: 0.95rem; }
+
+  .estado { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.25rem; }
+  .ponto { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--linha); flex: none; }
+  .estado.on .ponto { background: var(--conectado); }
+  .estado.erro .ponto { background: var(--alerta); }
+
+  .valor {
+    background: var(--superficie); border: 1px solid var(--linha); border-radius: 14px;
+    padding: 1.5rem 1.25rem; margin-bottom: 1rem;
+  }
+  .valor .numero { font-size: 3.5rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .valor .bruto { color: var(--suave); margin-top: 0.5rem; font-size: 0.9rem; word-break: break-all; }
+
+  .metricas { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; }
+  .metricas div { background: var(--superficie); border: 1px solid var(--linha); border-radius: 10px; padding: 0.75rem 1rem; }
+  .metricas b { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+  .metricas span { color: var(--suave); font-size: 0.85rem; }
+  .metricas .perdidas b.ruim { color: var(--alerta); }
+
+  button {
+    width: 100%; font: inherit; font-weight: 700; font-size: 1.05rem;
+    padding: 0.95rem; border-radius: 12px; border: none; cursor: pointer;
+    background: var(--tinta); color: var(--fundo); margin-bottom: 1.5rem;
+  }
+  button.sair { background: transparent; color: var(--tinta); border: 2px solid var(--tinta); }
+  button:focus-visible { outline: 3px solid var(--conectado); outline-offset: 3px; }
+
+  h2 { font-size: 1rem; margin: 0 0 0.5rem; }
+  #log {
+    background: var(--superficie); border: 1px solid var(--linha); border-radius: 10px;
+    padding: 0.75rem 1rem; height: 14rem; overflow-y: auto; margin: 0;
+    font-size: 0.85rem; white-space: pre-wrap;
+  }
+  .aviso { background: var(--alerta); color: #fff; padding: 1rem; border-radius: 10px; margin-bottom: 1.25rem; display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Receptor do sensor de postura</h1>
+  <p class="sub">Passo 2: teste de recepção BLE com o contador do ESP32</p>
+
+  <div class="aviso" id="aviso">
+    Este navegador não tem acesso ao Bluetooth. No iPhone, abra esta página no app Bluefy.
+  </div>
+
+  <div class="estado" id="estado"><span class="ponto"></span><span id="estadoTexto">Desconectado</span></div>
+
+  <div class="valor">
+    <div class="numero" id="numero">–</div>
+    <div class="bruto" id="bruto">Nenhuma mensagem recebida</div>
+  </div>
+
+  <div class="metricas">
+    <div><b id="recebidas">0</b><span>mensagens recebidas</span></div>
+    <div class="perdidas"><b id="perdidas">0</b><span>mensagens perdidas</span></div>
+  </div>
+
+  <button id="botao">Conectar ao TCC_Postura</button>
+
+  <h2>Registro</h2>
+  <pre id="log"></pre>
+</main>
+
+<script>
+  // Mesmos UUIDs do firmware (passo1_ble_contador.ino), em letras minúsculas
+  const SERVICE_UUID        = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+  const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+
+  const el = id => document.getElementById(id);
+  const decodificador = new TextDecoder("utf-8");
+
+  let dispositivo = null;
+  let caracteristica = null;
+  let ultimoContador = null;
+  let recebidas = 0;
+  let perdidas = 0;
+
+  function registrar(texto) {
+    const hora = new Date().toLocaleTimeString("pt-BR");
+    el("log").textContent = `${hora}  ${texto}\n` + el("log").textContent;
+  }
+
+  function mostrarEstado(texto, tipo) {
+    el("estadoTexto").textContent = texto;
+    el("estado").className = "estado" + (tipo ? " " + tipo : "");
+  }
+
+  function atualizarBotao(conectado) {
+    el("botao").textContent = conectado ? "Desconectar" : "Conectar ao TCC_Postura";
+    el("botao").classList.toggle("sair", conectado);
+  }
+
+  // Chamado a cada notificação enviada pelo ESP32
+  function aoReceber(evento) {
+    const texto = decodificador.decode(evento.target.value);   // DataView -> texto
+    recebidas++;
+    el("bruto").textContent = texto;
+    el("recebidas").textContent = recebidas;
+
+    const n = parseInt(texto.replace(/\D/g, ""), 10);          // extrai o número
+    if (!isNaN(n)) {
+      el("numero").textContent = n;
+      // Se o contador pulou, mensagens foram perdidas no caminho
+      if (ultimoContador !== null && n > ultimoContador + 1) {
+        perdidas += n - ultimoContador - 1;
+        el("perdidas").textContent = perdidas;
+        el("perdidas").classList.add("ruim");
+        registrar(`Salto de ${ultimoContador} para ${n}`);
+      }
+      ultimoContador = n;
+    }
+    registrar(`Recebido: ${texto}`);
+  }
+
+  function aoDesconectar() {
+    mostrarEstado("Desconectado");
+    atualizarBotao(false);
+    registrar("Conexão encerrada");
+    caracteristica = null;
+  }
+
+  async function conectar() {
+    try {
+      mostrarEstado("Procurando dispositivo...");
+      // 1) Abre o seletor do navegador, filtrando pelo serviço anunciado
+      dispositivo = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [SERVICE_UUID] }]
+      });
+      dispositivo.addEventListener("gattserverdisconnected", aoDesconectar);
+      registrar(`Selecionado: ${dispositivo.name || "sem nome"}`);
+
+      // 2) Conecta ao servidor GATT
+      mostrarEstado("Conectando...");
+      const servidor = await dispositivo.gatt.connect();
+
+      // 3) Localiza o serviço e a característica
+      const servico = await servidor.getPrimaryService(SERVICE_UUID);
+      caracteristica = await servico.getCharacteristic(CHARACTERISTIC_UUID);
+
+      // 4) Assina as notificações (equivale ao botão de setas no nRF Connect)
+      caracteristica.addEventListener("characteristicvaluechanged", aoReceber);
+      await caracteristica.startNotifications();
+
+      ultimoContador = null;   // nova sessão: não contar o salto inicial como perda
+      mostrarEstado(`Conectado a ${dispositivo.name || "ESP32"}`, "on");
+      atualizarBotao(true);
+      registrar("Notificações ativadas");
+    } catch (erro) {
+      mostrarEstado("Falha na conexão", "erro");
+      registrar(`Erro: ${erro.message}`);
+    }
+  }
+
+  function desconectar() {
+    if (dispositivo && dispositivo.gatt.connected) {
+      dispositivo.gatt.disconnect();   // dispara aoDesconectar()
+    }
+  }
+
+  // O seletor de Bluetooth só abre a partir de um toque do usuário
+  el("botao").addEventListener("click", () => {
+    if (dispositivo && dispositivo.gatt.connected) desconectar();
+    else conectar();
+  });
+
+  if (!navigator.bluetooth) {
+    el("aviso").style.display = "block";
+    el("botao").disabled = true;
+    registrar("Web Bluetooth indisponível neste navegador");
+  }
+</script>
+</body>
+</html>
