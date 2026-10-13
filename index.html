@@ -3,27 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TCC Postura – Receptor BLE</title>
+<title>TCC Postura – Monitor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --fundo: #E8EDEA;
-    --superficie: #F7F9F8;
-    --tinta: #1E2B2F;
-    --suave: #5C6B6E;
-    --conectado: #2E7D6B;
-    --alerta: #B5452E;
-    --linha: #CBD5D1;
+    --fundo: #E8EDEA; --superficie: #F7F9F8; --tinta: #1E2B2F; --suave: #5C6B6E;
+    --linha: #CBD5D1; --grade: #DDE4E1;
+    --normal: #2E7D6B; --contando: #B8860B; --alerta: #B5452E;
+    --serie-angulo: #2F5D8A; --serie-res: #6B4C9A;
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --fundo: #162024; --superficie: #1E2A2E; --tinta: #E4ECE9;
-      --suave: #9AABA8; --conectado: #5BBFA6; --alerta: #E07A62; --linha: #2F3D41;
+      --fundo: #162024; --superficie: #1E2A2E; --tinta: #E4ECE9; --suave: #9AABA8;
+      --linha: #2F3D41; --grade: #26343A;
+      --normal: #5BBFA6; --contando: #E0B341; --alerta: #E07A62;
+      --serie-angulo: #7FB0E0; --serie-res: #B79BE0;
     }
   }
   * { box-sizing: border-box; }
@@ -32,179 +31,443 @@
     font-family: "Atkinson Hyperlegible", -apple-system, "Segoe UI", Roboto, sans-serif;
     line-height: 1.5;
   }
-  main { max-width: 34rem; margin: 0 auto; padding: 1.5rem 1.25rem 2rem; }
-  h1 { font-size: 1.35rem; margin: 0 0 0.25rem; }
-  .sub { color: var(--suave); margin: 0 0 1.5rem; font-size: 0.95rem; }
+  main { max-width: 40rem; margin: 0 auto; padding: 1.25rem 1.25rem 2.5rem; }
+  h1 { font-size: 1.3rem; margin: 0 0 1rem; }
+  h2 { font-size: 1rem; margin: 1.75rem 0 0.5rem; }
 
-  .estado { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.25rem; }
-  .ponto { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--linha); flex: none; }
-  .estado.on .ponto { background: var(--conectado); }
-  .estado.erro .ponto { background: var(--alerta); }
+  .conexao { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; color: var(--suave); }
+  .ponto { width: 0.75rem; height: 0.75rem; border-radius: 50%; background: var(--linha); flex: none; }
+  .conexao.on .ponto { background: var(--normal); }
+  .conexao.erro .ponto { background: var(--alerta); }
 
-  .valor {
-    background: var(--superficie); border: 1px solid var(--linha); border-radius: 14px;
-    padding: 1.5rem 1.25rem; margin-bottom: 1rem;
+  /* Cartão de estado: a cor carrega o estado, o texto confirma */
+  .estado {
+    border-radius: 16px; padding: 1.25rem; color: #fff; background: var(--suave);
+    transition: background-color 0.3s;
   }
-  .valor .numero { font-size: 3.5rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-  .valor .bruto { color: var(--suave); margin-top: 0.5rem; font-size: 0.9rem; word-break: break-all; }
+  .estado.s0 { background: var(--normal); }
+  .estado.s1 { background: var(--contando); }
+  .estado.s2 { background: var(--alerta); }
+  .estado .titulo { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
+  .estado .detalhe { opacity: 0.92; margin-top: 0.25rem; }
 
-  .metricas { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; }
-  .metricas div { background: var(--superficie); border: 1px solid var(--linha); border-radius: 10px; padding: 0.75rem 1rem; }
-  .metricas b { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
-  .metricas span { color: var(--suave); font-size: 0.85rem; }
-  .metricas .perdidas b.ruim { color: var(--alerta); }
+  .leituras { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-top: 0.75rem; }
+  .leituras div { background: var(--superficie); border: 1px solid var(--linha); border-radius: 10px; padding: 0.6rem 0.75rem; }
+  .leituras b { display: block; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+  .leituras span { color: var(--suave); font-size: 0.8rem; }
 
   button {
-    width: 100%; font: inherit; font-weight: 700; font-size: 1.05rem;
-    padding: 0.95rem; border-radius: 12px; border: none; cursor: pointer;
-    background: var(--tinta); color: var(--fundo); margin-bottom: 1.5rem;
+    font: inherit; font-weight: 700; border-radius: 12px; cursor: pointer;
+    border: 2px solid var(--tinta); background: transparent; color: var(--tinta); padding: 0.55rem 0.9rem;
   }
-  button.sair { background: transparent; color: var(--tinta); border: 2px solid var(--tinta); }
-  button:focus-visible { outline: 3px solid var(--conectado); outline-offset: 3px; }
+  button.principal { width: 100%; background: var(--tinta); color: var(--fundo); padding: 0.9rem; font-size: 1.05rem; margin-top: 1rem; }
+  button.principal.sair { background: transparent; color: var(--tinta); }
+  button:focus-visible { outline: 3px solid var(--serie-angulo); outline-offset: 3px; }
+  button[aria-pressed="true"] { background: var(--tinta); color: var(--fundo); }
 
-  h2 { font-size: 1rem; margin: 0 0 0.5rem; }
-  #log {
-    background: var(--superficie); border: 1px solid var(--linha); border-radius: 10px;
-    padding: 0.75rem 1rem; height: 14rem; overflow-y: auto; margin: 0;
-    font-size: 0.85rem; white-space: pre-wrap;
-  }
-  .aviso { background: var(--alerta); color: #fff; padding: 1rem; border-radius: 10px; margin-bottom: 1.25rem; display: none; }
+  .janelas { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+  .grafico { background: var(--superficie); border: 1px solid var(--linha); border-radius: 12px; padding: 0.75rem; margin-bottom: 0.75rem; }
+  .grafico .rotulo { font-size: 0.9rem; color: var(--suave); margin-bottom: 0.25rem; }
+  canvas { display: block; width: 100%; height: 180px; }
+
+  .resumo { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
+  .resumo div { background: var(--superficie); border: 1px solid var(--linha); border-radius: 10px; padding: 0.6rem 0.75rem; }
+  .resumo b { display: block; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+  .resumo span { color: var(--suave); font-size: 0.8rem; }
+  .acoes { display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+
+  #log { background: var(--superficie); border: 1px solid var(--linha); border-radius: 10px;
+         padding: 0.6rem 0.9rem; height: 9rem; overflow-y: auto; margin: 0; font-size: 0.8rem; white-space: pre-wrap; }
+  .aviso { background: var(--alerta); color: #fff; padding: 1rem; border-radius: 10px; margin-bottom: 1rem; display: none; }
+  @media (prefers-reduced-motion: reduce) { .estado { transition: none; } }
 </style>
 </head>
 <body>
 <main>
-  <h1>Receptor do sensor de postura</h1>
-  <p class="sub">Passo 2: teste de recepção BLE com o contador do ESP32</p>
+  <h1>Monitor de postura cervical</h1>
 
-  <div class="aviso" id="aviso">
-    Este navegador não tem acesso ao Bluetooth. No iPhone, abra esta página no app Bluefy.
+  <div class="aviso" id="aviso">Este navegador não tem acesso ao Bluetooth. No iPhone, abra esta página no app Bluefy.</div>
+
+  <div class="conexao" id="conexao"><span class="ponto"></span><span id="conexaoTexto">Desconectado</span></div>
+
+  <div class="estado" id="estado" role="status" aria-live="assertive">
+    <div class="titulo" id="estadoTitulo">Aguardando conexão</div>
+    <div class="detalhe" id="estadoDetalhe">Conecte o sensor para começar o monitoramento</div>
   </div>
 
-  <div class="estado" id="estado"><span class="ponto"></span><span id="estadoTexto">Desconectado</span></div>
-
-  <div class="valor">
-    <div class="numero" id="numero">–</div>
-    <div class="bruto" id="bruto">Nenhuma mensagem recebida</div>
+  <div class="leituras">
+    <div><b id="vAngulo">–</b><span>ângulo estimado</span></div>
+    <div><b id="vRes">–</b><span>resistência</span></div>
+    <div><b id="vTensao">–</b><span>tensão</span></div>
   </div>
 
-  <div class="metricas">
-    <div><b id="recebidas">0</b><span>mensagens recebidas</span></div>
-    <div class="perdidas"><b id="perdidas">0</b><span>mensagens perdidas</span></div>
+  <button class="principal" id="botao">Conectar ao sensor</button>
+
+  <h2>Histórico</h2>
+  <div class="janelas" role="group" aria-label="Janela de tempo">
+    <button data-janela="60" aria-pressed="true">1 min</button>
+    <button data-janela="600" aria-pressed="false">10 min</button>
+    <button data-janela="0" aria-pressed="false">Sessão</button>
+  </div>
+  <div class="grafico">
+    <div class="rotulo">Ângulo (°) – linhas tracejadas: limiares de alerta</div>
+    <canvas id="gAngulo"></canvas>
+  </div>
+  <div class="grafico">
+    <div class="rotulo">Resistência (kΩ)</div>
+    <canvas id="gRes"></canvas>
   </div>
 
-  <button id="botao">Conectar ao TCC_Postura</button>
+  <div class="resumo">
+    <div><b id="rDuracao">0:00</b><span>duração da sessão</span></div>
+    <div><b id="rAlertas">0</b><span>alertas</span></div>
+    <div><b id="rTempoRuim">0:00</b><span>em alerta</span></div>
+  </div>
+  <div class="acoes">
+    <button id="exportar">Exportar CSV</button>
+    <button id="limpar">Limpar histórico</button>
+  </div>
 
   <h2>Registro</h2>
   <pre id="log"></pre>
 </main>
 
 <script>
-  // Mesmos UUIDs do firmware (passo1_ble_contador.ino), em letras minúsculas
-  const SERVICE_UUID        = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
-  const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+// ===================================================================
+// 1) Configuração: deve coincidir com o firmware passo3_sensor_ble.ino
+// ===================================================================
+const SERVICE_UUID        = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+const VCC = 3.3;
+const R_FIXO = 33000;
+const R_LIGA = 30000, R_DESLIGA = 28000;
 
-  const el = id => document.getElementById(id);
-  const decodificador = new TextDecoder("utf-8");
+// Tabela de calibração: resistência (Ω) -> ângulo (°), em ordem crescente.
+// PENDENTE: substituir pela tabela recoletada / pela tara.
+const CALIBRACAO = [
+  [22423, 0], [25796, 10], [34705, 20], [41445, 30],
+  [47921, 40], [67704, 50], [77313, 60]
+];
 
-  let dispositivo = null;
-  let caracteristica = null;
-  let ultimoContador = null;
-  let recebidas = 0;
-  let perdidas = 0;
+const ESTADOS = [
+  { titulo: "Postura adequada",  detalhe: "Sensor abaixo do limiar" },
+  { titulo: "Atenção",           detalhe: "" },   // preenchido com o tempo
+  { titulo: "Corrija a postura", detalhe: "Inclinação mantida por mais de 5 s" }
+];
 
-  function registrar(texto) {
-    const hora = new Date().toLocaleTimeString("pt-BR");
-    el("log").textContent = `${hora}  ${texto}\n` + el("log").textContent;
-  }
+// ===================================================================
+// 2) Conversões
+// ===================================================================
+function resistenciaDe(v) {                     // flex no lado do GND
+  return R_FIXO * v / (VCC - v);
+}
 
-  function mostrarEstado(texto, tipo) {
-    el("estadoTexto").textContent = texto;
-    el("estado").className = "estado" + (tipo ? " " + tipo : "");
-  }
-
-  function atualizarBotao(conectado) {
-    el("botao").textContent = conectado ? "Desconectar" : "Conectar ao TCC_Postura";
-    el("botao").classList.toggle("sair", conectado);
-  }
-
-  // Chamado a cada notificação enviada pelo ESP32
-  function aoReceber(evento) {
-    const texto = decodificador.decode(evento.target.value);   // DataView -> texto
-    recebidas++;
-    el("bruto").textContent = texto;
-    el("recebidas").textContent = recebidas;
-
-    const n = parseInt(texto.replace(/\D/g, ""), 10);          // extrai o número
-    if (!isNaN(n)) {
-      el("numero").textContent = n;
-      // Se o contador pulou, mensagens foram perdidas no caminho
-      if (ultimoContador !== null && n > ultimoContador + 1) {
-        perdidas += n - ultimoContador - 1;
-        el("perdidas").textContent = perdidas;
-        el("perdidas").classList.add("ruim");
-        registrar(`Salto de ${ultimoContador} para ${n}`);
-      }
-      ultimoContador = n;
-    }
-    registrar(`Recebido: ${texto}`);
-  }
-
-  function aoDesconectar() {
-    mostrarEstado("Desconectado");
-    atualizarBotao(false);
-    registrar("Conexão encerrada");
-    caracteristica = null;
-  }
-
-  async function conectar() {
-    try {
-      mostrarEstado("Procurando dispositivo...");
-      // 1) Abre o seletor do navegador, filtrando pelo serviço anunciado
-      dispositivo = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [SERVICE_UUID] }]
-      });
-      dispositivo.addEventListener("gattserverdisconnected", aoDesconectar);
-      registrar(`Selecionado: ${dispositivo.name || "sem nome"}`);
-
-      // 2) Conecta ao servidor GATT
-      mostrarEstado("Conectando...");
-      const servidor = await dispositivo.gatt.connect();
-
-      // 3) Localiza o serviço e a característica
-      const servico = await servidor.getPrimaryService(SERVICE_UUID);
-      caracteristica = await servico.getCharacteristic(CHARACTERISTIC_UUID);
-
-      // 4) Assina as notificações (equivale ao botão de setas no nRF Connect)
-      caracteristica.addEventListener("characteristicvaluechanged", aoReceber);
-      await caracteristica.startNotifications();
-
-      ultimoContador = null;   // nova sessão: não contar o salto inicial como perda
-      mostrarEstado(`Conectado a ${dispositivo.name || "ESP32"}`, "on");
-      atualizarBotao(true);
-      registrar("Notificações ativadas");
-    } catch (erro) {
-      mostrarEstado("Falha na conexão", "erro");
-      registrar(`Erro: ${erro.message}`);
+function anguloDe(r) {                          // interpolação linear por trechos
+  const t = CALIBRACAO;
+  if (r <= t[0][0]) return t[0][1];
+  if (r >= t[t.length - 1][0]) return t[t.length - 1][1];
+  for (let i = 1; i < t.length; i++) {
+    if (r <= t[i][0]) {
+      const [r0, a0] = t[i - 1], [r1, a1] = t[i];
+      return a0 + (r - r0) * (a1 - a0) / (r1 - r0);
     }
   }
+}
 
-  function desconectar() {
-    if (dispositivo && dispositivo.gatt.connected) {
-      dispositivo.gatt.disconnect();   // dispara aoDesconectar()
-    }
+// ===================================================================
+// 3) Estado da sessão
+// ===================================================================
+const el = id => document.getElementById(id);
+const decodificador = new TextDecoder("utf-8");
+let dispositivo = null;
+let historico = [];            // { t (s), mv, estado, r, ang }
+let inicioSessao = null;
+let estadoAnterior = null;
+let alertas = 0;
+let tempoEmAlerta = 0;         // s
+let janela = 60;               // s; 0 = sessão inteira
+let audio = null;
+let ultimaMensagem = 0;
+
+function registrar(texto) {
+  const hora = new Date().toLocaleTimeString("pt-BR");
+  el("log").textContent = `${hora}  ${texto}\n` + el("log").textContent;
+}
+function mmss(seg) {
+  seg = Math.max(0, Math.round(seg));
+  return `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, "0")}`;
+}
+
+// ===================================================================
+// 4) Recepção: "tensao_mV;estado;tempo_s"
+// ===================================================================
+function aoReceber(evento) {
+  const texto = decodificador.decode(evento.target.value);
+  const partes = texto.split(";");
+  if (partes.length !== 3) { registrar(`Formato inesperado: ${texto}`); return; }
+
+  const mv = parseInt(partes[0], 10);
+  const estado = parseInt(partes[1], 10);
+  const tempo = parseFloat(partes[2]);
+  if (isNaN(mv) || isNaN(estado) || isNaN(tempo)) { registrar(`Valor inválido: ${texto}`); return; }
+
+  const agora = performance.now() / 1000;
+  if (inicioSessao === null) inicioSessao = agora;
+  const t = agora - inicioSessao;
+  const dt = ultimaMensagem ? agora - ultimaMensagem : 0;
+  ultimaMensagem = agora;
+
+  const v = mv / 1000;
+  const r = resistenciaDe(v);
+  const ang = anguloDe(r);
+  historico.push({ t, mv, estado, r, ang });
+
+  if (estado === 2) tempoEmAlerta += dt;
+  if (estado === 2 && estadoAnterior !== 2) dispararAlerta();
+  if (estado !== 2 && estadoAnterior === 2) registrar("Postura corrigida");
+  estadoAnterior = estado;
+
+  mostrarLeitura(estado, tempo, v, r, ang);
+  agendarDesenho();
+}
+
+function mostrarLeitura(estado, tempo, v, r, ang) {
+  const e = ESTADOS[estado] || ESTADOS[0];
+  el("estado").className = `estado s${estado}`;
+  el("estadoTitulo").textContent = e.titulo;
+  el("estadoDetalhe").textContent = estado === 1
+    ? `Inclinação detectada há ${tempo.toFixed(1)} s; alerta em ${Math.max(0, 5 - tempo).toFixed(1)} s`
+    : e.detalhe;
+  el("vAngulo").textContent = `${ang.toFixed(0)}°`;
+  el("vRes").textContent = `${(r / 1000).toFixed(1)} kΩ`;
+  el("vTensao").textContent = `${v.toFixed(3)} V`;
+}
+
+// ===================================================================
+// 5) Alerta: som + notificação (quando o navegador permitir)
+// ===================================================================
+function prepararAlertas() {
+  // iOS só libera áudio a partir de um toque do usuário: criamos aqui
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    audio.resume();
+  } catch (e) { audio = null; }
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission().catch(() => {});
   }
+}
 
-  // O seletor de Bluetooth só abre a partir de um toque do usuário
-  el("botao").addEventListener("click", () => {
-    if (dispositivo && dispositivo.gatt.connected) desconectar();
-    else conectar();
+function bipe(inicio, freq) {
+  const osc = audio.createOscillator(), ganho = audio.createGain();
+  osc.frequency.value = freq;
+  ganho.gain.setValueAtTime(0.25, inicio);
+  ganho.gain.exponentialRampToValueAtTime(0.001, inicio + 0.18);
+  osc.connect(ganho).connect(audio.destination);
+  osc.start(inicio); osc.stop(inicio + 0.2);
+}
+
+function dispararAlerta() {
+  alertas++;
+  el("rAlertas").textContent = alertas;
+  registrar("ALERTA: postura inadequada por mais de 5 s");
+  if (audio) {
+    const t0 = audio.currentTime;
+    bipe(t0, 880); bipe(t0 + 0.25, 880); bipe(t0 + 0.5, 1175);
+  }
+  try {
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("Corrija a postura", { body: "Pescoço inclinado por mais de 5 segundos." });
+    }
+  } catch (e) { /* alguns navegadores não permitem notificações nesta página */ }
+}
+
+// ===================================================================
+// 6) Gráficos em canvas (sem bibliotecas externas)
+// ===================================================================
+let desenhoPendente = false;
+function agendarDesenho() {
+  if (desenhoPendente) return;
+  desenhoPendente = true;
+  setTimeout(() => { desenhoPendente = false; desenharTudo(); }, 400);   // ~2,5 quadros/s
+}
+
+function cor(nome) { return getComputedStyle(document.documentElement).getPropertyValue(nome).trim(); }
+
+function desenharGrafico(canvas, pontos, campo, opcoes) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const m = { esq: 38, dir: 8, topo: 8, base: 20 };
+  const pw = w - m.esq - m.dir, ph = h - m.topo - m.base;
+  const fim = pontos.length ? pontos[pontos.length - 1].t : 0;
+  const ini = janela ? Math.max(0, fim - janela) : (pontos.length ? pontos[0].t : 0);
+  const span = Math.max(janela || (fim - ini), 1);
+  const { min, max } = opcoes;
+  const x = t => m.esq + (t - ini) / span * pw;
+  const y = v => m.topo + (1 - (Math.min(Math.max(v, min), max) - min) / (max - min)) * ph;
+
+  // Grade e rótulos do eixo y
+  ctx.font = "11px -apple-system, sans-serif";
+  ctx.fillStyle = cor("--suave"); ctx.strokeStyle = cor("--grade"); ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const v = min + (max - min) * i / 4, yy = y(v);
+    ctx.beginPath(); ctx.moveTo(m.esq, yy); ctx.lineTo(w - m.dir, yy); ctx.stroke();
+    ctx.fillText(v.toFixed(0), 4, yy + 4);
+  }
+  // Rótulos do eixo x (início e fim da janela)
+  ctx.fillText(mmss(ini), m.esq, h - 4);
+  const rotFim = mmss(ini + span);
+  ctx.fillText(rotFim, w - m.dir - ctx.measureText(rotFim).width, h - 4);
+
+  // Limiares tracejados
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = cor("--alerta");
+  for (const lim of opcoes.limiares) {
+    ctx.beginPath(); ctx.moveTo(m.esq, y(lim)); ctx.lineTo(w - m.dir, y(lim)); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Série: no máximo um ponto por pixel (média por coluna)
+  const visiveis = pontos.filter(p => p.t >= ini);
+  if (visiveis.length < 2) return;
+  const colunas = new Map();
+  for (const p of visiveis) {
+    const c = Math.round(x(p.t));
+    const acc = colunas.get(c) || { s: 0, n: 0 };
+    acc.s += campo(p); acc.n++; colunas.set(c, acc);
+  }
+  ctx.strokeStyle = opcoes.cor; ctx.lineWidth = 2; ctx.lineJoin = "round";
+  ctx.beginPath();
+  let primeiro = true;
+  for (const [c, acc] of colunas) {
+    const yy = y(acc.s / acc.n);
+    if (primeiro) { ctx.moveTo(c, yy); primeiro = false; } else ctx.lineTo(c, yy);
+  }
+  ctx.stroke();
+}
+
+function desenharTudo() {
+  desenharGrafico(el("gAngulo"), historico, p => p.ang, {
+    min: 0, max: 60, cor: cor("--serie-angulo"),
+    limiares: [anguloDe(R_LIGA), anguloDe(R_DESLIGA)]
   });
+  desenharGrafico(el("gRes"), historico, p => p.r / 1000, {
+    min: 20, max: 80, cor: cor("--serie-res"),
+    limiares: [R_LIGA / 1000, R_DESLIGA / 1000]
+  });
+  const dur = historico.length ? historico[historico.length - 1].t : 0;
+  el("rDuracao").textContent = mmss(dur);
+  el("rTempoRuim").textContent = mmss(tempoEmAlerta);
+}
 
-  if (!navigator.bluetooth) {
-    el("aviso").style.display = "block";
-    el("botao").disabled = true;
-    registrar("Web Bluetooth indisponível neste navegador");
+// ===================================================================
+// 7) Exportação CSV (para análise no Excel e figuras do TCC)
+// ===================================================================
+async function exportarCSV() {
+  if (!historico.length) { registrar("Nada para exportar"); return; }
+  const linhas = ["tempo_s;tensao_mV;estado;resistencia_ohm;angulo_graus"];
+  for (const p of historico) {
+    linhas.push([p.t.toFixed(2), p.mv, p.estado, p.r.toFixed(0), p.ang.toFixed(1)]
+      .join(";").replace(/\./g, ","));
   }
+  const csv = linhas.join("\n");
+  const nome = `postura_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.csv`;
+  const arquivo = new File([csv], nome, { type: "text/csv" });
+
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
+      await navigator.share({ files: [arquivo], title: nome });   // folha de compartilhamento do iOS
+      registrar(`Exportado: ${nome}`); return;
+    }
+  } catch (e) { if (e.name === "AbortError") return; }
+
+  try {
+    await navigator.clipboard.writeText(csv);
+    registrar(`CSV copiado (${historico.length} linhas). Cole em um e-mail ou nota.`);
+  } catch (e) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(arquivo); a.download = nome; a.click();
+    registrar(`Download iniciado: ${nome}`);
+  }
+}
+
+// ===================================================================
+// 8) Conexão BLE (mesma sequência do passo 2)
+// ===================================================================
+function mostrarConexao(texto, tipo) {
+  el("conexaoTexto").textContent = texto;
+  el("conexao").className = "conexao" + (tipo ? " " + tipo : "");
+}
+function atualizarBotao(conectado) {
+  el("botao").textContent = conectado ? "Desconectar" : "Conectar ao sensor";
+  el("botao").classList.toggle("sair", conectado);
+}
+
+function aoDesconectar() {
+  mostrarConexao("Desconectado. Toque em conectar para retomar.", "erro");
+  atualizarBotao(false);
+  registrar("Conexão perdida");
+  ultimaMensagem = 0;
+}
+
+async function conectar() {
+  prepararAlertas();
+  try {
+    mostrarConexao("Procurando sensor...");
+    dispositivo = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE_UUID] }] });
+    dispositivo.addEventListener("gattserverdisconnected", aoDesconectar);
+    mostrarConexao("Conectando...");
+    const servidor = await dispositivo.gatt.connect();
+    const servico = await servidor.getPrimaryService(SERVICE_UUID);
+    const carac = await servico.getCharacteristic(CHARACTERISTIC_UUID);
+    carac.addEventListener("characteristicvaluechanged", aoReceber);
+    await carac.startNotifications();
+    mostrarConexao(`Conectado a ${dispositivo.name || "sensor"}`, "on");
+    atualizarBotao(true);
+    registrar("Monitoramento iniciado");
+  } catch (erro) {
+    mostrarConexao("Falha na conexão", "erro");
+    registrar(`Erro: ${erro.message}`);
+  }
+}
+
+// Vigia: conexão ativa, mas sem dados por mais de 2 s
+setInterval(() => {
+  if (dispositivo && dispositivo.gatt.connected && ultimaMensagem &&
+      performance.now() / 1000 - ultimaMensagem > 2) {
+    mostrarConexao("Conectado, mas sem dados há mais de 2 s", "erro");
+  }
+}, 1000);
+
+// ===================================================================
+// 9) Eventos da interface
+// ===================================================================
+el("botao").addEventListener("click", () => {
+  if (dispositivo && dispositivo.gatt.connected) dispositivo.gatt.disconnect();
+  else conectar();
+});
+document.querySelectorAll("[data-janela]").forEach(b => b.addEventListener("click", () => {
+  janela = parseInt(b.dataset.janela, 10);
+  document.querySelectorAll("[data-janela]").forEach(o => o.setAttribute("aria-pressed", o === b));
+  desenharTudo();
+}));
+el("exportar").addEventListener("click", exportarCSV);
+el("limpar").addEventListener("click", () => {
+  if (!confirm("Apagar o histórico desta sessão?")) return;
+  historico = []; inicioSessao = null; alertas = 0; tempoEmAlerta = 0;
+  el("rAlertas").textContent = "0";
+  desenharTudo(); registrar("Histórico apagado");
+});
+window.addEventListener("resize", desenharTudo);
+
+if (!navigator.bluetooth) {
+  el("aviso").style.display = "block";
+  el("botao").disabled = true;
+}
+desenharTudo();
 </script>
 </body>
 </html>
